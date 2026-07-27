@@ -95,6 +95,41 @@ def get_ticket(args_ticket):
     return ticket
 
 
+def request_con_reintentos(url, headers, params, max_intentos=5, timeout=60):
+    """Hace un GET reintentando ante timeouts / errores transitorios del servidor
+    (502/503/504), con espera creciente entre intentos. Los errores de cliente
+    (400/401/403/404) no se reintentan, ya que reintentar no los soluciona."""
+    for intento in range(1, max_intentos + 1):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=timeout)
+        except requests.exceptions.RequestException as exc:
+            if intento == max_intentos:
+                raise
+            espera = min(2 ** intento, 30)
+            print(
+                f"  Error de red ({exc}). Reintentando en {espera}s "
+                f"(intento {intento}/{max_intentos})...",
+                file=sys.stderr,
+            )
+            time.sleep(espera)
+            continue
+
+        if resp.status_code in (502, 503, 504):
+            if intento == max_intentos:
+                return resp
+            espera = min(2 ** intento, 30)
+            print(
+                f"  HTTP {resp.status_code} (servidor ocupado). Reintentando en "
+                f"{espera}s (intento {intento}/{max_intentos})...",
+                file=sys.stderr,
+            )
+            time.sleep(espera)
+            continue
+
+        return resp
+    return resp
+
+
 def fetch_compras_agiles(ticket, region=REGION_METROPOLITANA, estado="publicada"):
     items = []
     pagina = 1
@@ -106,11 +141,10 @@ def fetch_compras_agiles(ticket, region=REGION_METROPOLITANA, estado="publicada"
             "numero_pagina": pagina,
             "ordenar_por": "FechaPublicacion",
         }
-        resp = requests.get(
+        resp = request_con_reintentos(
             f"{BASE_URL}/v2/compra-agil",
             headers={"ticket": ticket},
             params=params,
-            timeout=30,
         )
         if resp.status_code == 429:
             print("Cuota diaria agotada (429). Intenta más tarde.", file=sys.stderr)
