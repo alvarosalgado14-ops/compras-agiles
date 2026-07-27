@@ -236,13 +236,34 @@ def write_html(rows, path="compras_agiles_rm.html"):
     total_riesgo = sum(1 for r in rows if r["riesgo_desierta"])
     generado = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    # Agregados por categoría, usados para las opciones del filtro y para
+    # poder ordenar las categorías por cantidad / presupuesto / riesgo.
+    agregados = {}
+    for categoria, filas in por_categoria.items():
+        agregados[categoria] = {
+            "cantidad": len(filas),
+            "presupuesto": sum(f["presupuesto_clp"] or 0 for f in filas),
+            "riesgo": sum(1 for f in filas if f["riesgo_desierta"]),
+        }
+
+    opciones_filtro = ['<option value="todas">Todas las categorías</option>']
+    for categoria in sorted(por_categoria):
+        opciones_filtro.append(
+            f'<option value="{categoria}">{categoria} '
+            f'({agregados[categoria]["cantidad"]})</option>'
+        )
+
     html = [f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <title>Compras Ágiles abiertas - Región Metropolitana</title>
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 2rem; background:#fafafa; color:#222; }}
 h1 {{ font-size: 1.4rem; }}
 h2 {{ font-size: 1.05rem; margin-bottom: 0.3rem; }}
-.meta {{ color:#666; margin-bottom: 1.5rem; }}
+.meta {{ color:#666; margin-bottom: 1rem; }}
+.controls {{ display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.5rem;
+             background:#fff; padding:0.75rem 1rem; border:1px solid #ddd; border-radius:6px; }}
+.controls label {{ font-size:0.85rem; color:#333; }}
+.controls select {{ margin-left:0.4rem; padding:3px 6px; font-size:0.85rem; }}
 .categoria {{ margin-top: 2rem; }}
 table {{ border-collapse: collapse; width: 100%; background:#fff; }}
 th, td {{ border: 1px solid #ddd; padding: 6px 10px; font-size: 0.82rem; text-align:left; vertical-align:top; }}
@@ -252,11 +273,32 @@ tr.riesgo {{ background:#fff2f2; }}
 </style></head><body>
 <h1>Compras Ágiles abiertas — Región Metropolitana</h1>
 <div class="meta">Generado: {generado} · Total procesos: {len(rows)} · Con riesgo de deserción (cierran en &lt;24h, 0 ofertas): {total_riesgo}</div>
+<div class="controls">
+  <label>Filtrar categoría:
+    <select id="filtroCategoria">
+      {''.join(opciones_filtro)}
+    </select>
+  </label>
+  <label>Ordenar categorías por:
+    <select id="ordenCategoria">
+      <option value="alfabetico">Alfabético</option>
+      <option value="cantidad">Cantidad de procesos</option>
+      <option value="presupuesto">Presupuesto total</option>
+      <option value="riesgo">Procesos en riesgo</option>
+    </select>
+  </label>
+</div>
+<div id="contenedorCategorias">
 """]
 
     for categoria in sorted(por_categoria):
         filas = por_categoria[categoria]
-        html.append(f'<div class="categoria"><h2>{categoria} ({len(filas)})</h2><table>')
+        agg = agregados[categoria]
+        html.append(
+            f'<div class="categoria" data-categoria="{categoria}" '
+            f'data-cantidad="{agg["cantidad"]}" data-presupuesto="{agg["presupuesto"]}" '
+            f'data-riesgo="{agg["riesgo"]}"><h2>{categoria} ({len(filas)})</h2><table>'
+        )
         html.append(
             "<tr><th>ID</th><th>Detalle</th><th>Organismo</th><th>Cierre</th>"
             "<th>Días rest.</th><th>Presupuesto (CLP)</th><th>Ofertas</th><th></th></tr>"
@@ -273,7 +315,40 @@ tr.riesgo {{ background:#fff2f2; }}
             )
         html.append("</table></div>")
 
+    html.append("</div>")  # cierre de #contenedorCategorias
+
+    script_js = """
+<script>
+  var filtro = document.getElementById('filtroCategoria');
+  var orden = document.getElementById('ordenCategoria');
+  var contenedor = document.getElementById('contenedorCategorias');
+
+  function aplicarFiltro() {
+    var val = filtro.value;
+    document.querySelectorAll('.categoria').forEach(function (div) {
+      div.style.display = (val === 'todas' || div.dataset.categoria === val) ? '' : 'none';
+    });
+  }
+
+  function aplicarOrden() {
+    var criterio = orden.value;
+    var divs = Array.from(contenedor.querySelectorAll('.categoria'));
+    divs.sort(function (a, b) {
+      if (criterio === 'cantidad') return b.dataset.cantidad - a.dataset.cantidad;
+      if (criterio === 'presupuesto') return b.dataset.presupuesto - a.dataset.presupuesto;
+      if (criterio === 'riesgo') return b.dataset.riesgo - a.dataset.riesgo;
+      return a.dataset.categoria.localeCompare(b.dataset.categoria, 'es');
+    });
+    divs.forEach(function (div) { contenedor.appendChild(div); });
+  }
+
+  filtro.addEventListener('change', aplicarFiltro);
+  orden.addEventListener('change', aplicarOrden);
+</script>
+"""
+    html.append(script_js)
     html.append("</body></html>")
+
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(html))
     print(f"HTML guardado en {path}")
