@@ -141,6 +141,9 @@ def dias_restantes(fecha_cierre_iso):
         cierre = datetime.fromisoformat(fecha_cierre_iso.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if cierre.tzinfo is None:
+        # La API a veces devuelve fechas sin zona horaria explícita; se asume UTC.
+        cierre = cierre.replace(tzinfo=timezone.utc)
     ahora = datetime.now(timezone.utc)
     return (cierre - ahora).total_seconds() / 86400
 
