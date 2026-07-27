@@ -1,0 +1,33 @@
+name: Reporte Compras Ágiles RM
+
+on:
+  schedule:
+    - cron: '0 12 */2 * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar-reporte:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install requests
+
+      - run: python3 compras_agiles_rm.py
+        env:
+          COMPRA_AGIL_TICKET: ${{ secrets.COMPRA_AGIL_TICKET }}
+
+      - name: Guardar reporte actualizado
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add compras_agiles_rm.html compras_agiles_rm.csv
+          git commit -m "Reporte actualizado" || echo "Sin cambios"
+          git push
