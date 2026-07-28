@@ -30,4 +30,8 @@ jobs:
           git config user.email "actions@github.com"
           git add compras_agiles_rm.html compras_agiles_rm.csv
           git commit -m "Reporte actualizado" || echo "Sin cambios"
-          git push
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X ours origin main && git push && break
+            echo "Push rechazado por otra ejecución en paralelo, reintentando ($i/5)..."
+            sleep 5
+          done
